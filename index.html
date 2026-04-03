@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SouthStack — Free Swarm IDE</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+
+  <input type="file" id="file-upload-input" multiple accept="*/*" style="display:none">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="titlebar">
+  <span class="tb-logo"> SouthStack</span>
+  <div style="width:1px;height:18px;background:var(--border)"></div>
+  <span class="tb-tag">100% Free Browser-based IDE</span>
+  <div class="tb-right">
+    <button id="mobile-menu-btn" style="display:none; background:transparent; border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;">☰ Menu</button>
+    <button id="settings-btn">⚙ Settings</button>
+  </div>
+</div>
+
+<div id="main">
+
+  <div id="sidebar">
+    <button id="new-chat-btn">＋ New Chat</button>
+
+    <div class="sidebar-label" style="color:var(--accent)">Project Files</div>
+
+    <div style="padding:0 12px;margin-bottom:6px;display:flex;gap:5px;position:relative;">
+      <div style="position:relative;flex:1;">
+        <input type="text" id="new-file-name" placeholder="e.g. main.cpp" autocomplete="off"
+          style="width:100%;background:var(--panel);border:1px solid var(--border);color:white;
+                 padding:6px;font-size:11px;border-radius:4px;font-family:'JetBrains Mono',monospace;outline:none;">
+        <div id="ext-dropdown"
+          style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);
+                 border:1px solid var(--border);z-index:100;border-radius:4px;margin-top:4px;
+                 box-shadow:0 8px 16px rgba(0,0,0,0.6);max-height:160px;overflow-y:auto;"></div>
+      </div>
+      <button id="add-file-btn"
+        style="background:var(--accent);color:black;border:none;padding:0 10px;border-radius:4px;cursor:pointer;font-weight:bold;"
+        title="Create file">+</button>
+    </div>
+
+    <div id="file-explorer"
+      style="padding:0 12px;display:flex;flex-direction:column;gap:2px;margin-bottom:6px;max-height:140px;overflow-y:auto;"></div>
+
+    <div style="padding:0 12px;margin-bottom:12px;display:flex;gap:6px;">
+      <button id="upload-file-btn" class="btn-file-action" title="Upload files from your computer">⬆ Upload</button>
+      <button id="export-zip-btn" class="btn-file-action" title="Export all files as ZIP">⬇ ZIP</button>
+    </div>
+
+    <div class="sidebar-label" style="color:var(--accent2)">Swarm Network</div>
+    <div id="p2p-panel">
+      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
+        <span id="my-peer-id" style="flex:1;margin-bottom:0;" title="Click to copy Node ID">Connecting...</span>
+        <button id="copy-link-btn" class="btn-exec"
+          style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);padding:5px 8px;">
+          🔗 Link
+        </button>
+      </div>
+      <div class="p2p-input-group">
+        <input id="target-peer-id" type="text" placeholder="Partner Node ID...">
+        <button id="connect-peer-btn">Join</button>
+      </div>
+      <div id="p2p-status">
+        <div class="peer-dot" id="peer-dot"></div>
+        <span id="peer-status-text">Initializing...</span>
+      </div>
+    </div>
+
+    <div class="sidebar-label">Chat Sessions</div>
+    <div id="session-list"></div>
+  </div>
+
+  <div id="resizer-left" class="panel-resizer" title="Drag to resize"></div>
+
+  <div id="editor-area">
+    <div id="editor-tabs">
+      <div style="display:flex;align-items:center;gap:10px;padding-left:10px;flex:1;min-width:0;">
+        <div id="active-file-display"
+          style="color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:bold;
+                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">
+          main.js
+        </div>
+        <div id="save-indicator" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);"></div>
+      </div>
+      <div class="editor-actions">
+        <button id="find-replace-btn" class="btn-exec" title="Find & Replace (Ctrl+H)">⌕ Find</button>
+        <button id="run-btn" class="btn-exec">▶ Run Code</button>
+        <button id="push-code-btn" class="btn-exec"> Push Project</button>
+      </div>
+    </div>
+
+    <div id="pyodide-loading">
+      <div class="py-spinner"></div>
+      <span id="pyodide-status">Loading Python... first time only</span>
+    </div>
+
+    <div id="monaco-container"></div>
+
+    <div id="terminal-area">
+      <div id="terminal-header">
+        <span> Terminal / Agentic Output</span>
+        <button id="clear-term-btn">Clear</button>
+      </div>
+      <div id="terminal-output">
+        <span style="color:var(--muted)">$ SouthStack ready. Create a file and press ▶ Run Code</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="resizer-right" class="panel-resizer" title="Drag to resize"></div>
+
+  <div id="chat-area">
+    <div id="model-bar">
+      <div style="display:flex;gap:10px;align-items:center;width:100%;">
+        <div class="dropdown-wrapper" style="flex:1;">
+          <select id="model-select">
+            <option value="" disabled selected>-- Select an AI Agent --</option>
+            <optgroup label="Offline (WebLLM — WebGPU)">
+              <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC"> Qwen 0.5B (Ultrafast)</option>
+              <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC"> Qwen 1.5B (Balanced)</option>
+              <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC"> Llama 1B (Smart)</option>
+            </optgroup>
+            <optgroup label="Local (Ollama)">
+              <option value="ollama"> Local Ollama Server</option>
+            </optgroup>
+            <optgroup label="Cloud (High Power)">
+              <option value="gemini"> Google Gemini 1.5</option>
+              <option value="groq"> Groq (LPU Speed)</option>
+            </optgroup>
+          </select>
+        </div>
+        <button id="ai-voice-toggle" class="btn-exec"
+          title="Toggle AI Voice"
+          style="padding:8px 12px;border-color:var(--border);color:var(--muted);font-size:11px;white-space:nowrap;border-radius:6px;">
+          🔇 Voice OFF
+        </button>
+      </div>
+      <div id="status-text">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-label">Select Agent</span>
+      </div>
+    </div>
+
+    <div id="webllm-progress">
+      <div id="progress-text">Downloading weights...</div>
+      <div id="progress-track"><div id="progress-fill"></div></div>
+    </div>
+
+    <div id="messages">
+      <div id="welcome">
+        <h2>// Agentic Assistant</h2>
+        <p>Select a free model to start coding.</p>
+        <div class="tips">
+          <div class="tip">🎤 Voice-to-text input enabled</div>
+          <div class="tip">🔊 AI response speech enabled</div>
+          <div class="tip">👻 Local Ghost-text suggestions</div>
+          <div class="tip">⬆ Insert AI code directly into editor</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="input-bar">
+      <div id="input-hint"></div>
+      <div id="input-inner">
+        <textarea id="user-input" rows="1"
+          placeholder="Ask AI... (Enter to send)" disabled></textarea>
+        <button id="mic-btn" title="Voice Input" disabled
+          style="background:transparent;border:none;font-size:18px;cursor:pointer;padding:5px 8px;color:var(--muted);transition:0.2s;">
+          🎤
+        </button>
+        <button id="send-btn" disabled>Send</button>
+      </div>
+    </div>
+  </div>
+
+</div><div id="settings-overlay">
+  <div id="settings-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:bold;font-size:14px;color:var(--text)">⚙ Free Settings</span>
+      <button onclick="closeSettings()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;">✕</button>
+    </div>
+
+    <div class="s-group">
+      <label class="s-label" style="color:var(--accent)">Offline P2P Signaling (No Internet)</label>
+      <input id="local-ip" class="s-input" type="text" placeholder="e.g. 192.168.1.5">
+      <div class="s-note">Leave empty for cloud P2P. Enter Host IP for offline Hotspot.</div>
+    </div>
+
+    <div class="s-group">
+      <label class="s-label" style="color:var(--accent2)">Offline Compiler (Hybrid Piston API)</label>
+      <input id="piston-url" class="s-input" type="text" placeholder="http://192.168.1.5:2000/api/v2/piston/execute">
+      <div class="s-note">Leave empty for Cloud. Enter local Piston URL to compile C/C++/Java offline.</div>
+    </div>
+
+    <div class="s-divider"></div>
+
+    <div class="s-group">
+      <label class="s-label" style="color:var(--gemini)">Google Gemini API Key</label>
+      <input id="gemini-key" class="s-input" type="password" placeholder="AIzaSy...">
+    </div>
+    <div class="s-group">
+      <label class="s-label" style="color:var(--groq)">Groq API Key</label>
+      <input id="groq-key" class="s-input" type="password" placeholder="gsk_...">
+    </div>
+    <div class="s-group">
+      <label class="s-label" style="color:var(--ollama)">Ollama Local Model</label>
+      <input id="ollama-model" class="s-input" type="text" placeholder="qwen2.5-coder:1.5b">
+    </div>
+
+    <button class="s-save" id="save-settings-btn">💾 Save & Close</button>
+  </div>
+</div>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
