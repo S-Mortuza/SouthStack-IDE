@@ -1,5 +1,5 @@
 /**
- * SouthStack IDE — Core Logic v2.1 (Fully Audited)
+ * SouthStack IDE — Core Logic v2.1 (Final & Fully Audited - Claude Fixes Applied)
  */
 
 // ══════════════════════════════════
@@ -44,7 +44,7 @@ function parseMd(raw) {
   });
   s = s
     .replace(/`([^`\n]+)`/g,    (_, c) => `<code>${esc(c)}</code>`)
-    .replace(/^#{1,6}\s+(.+)$/gm, (_, t) => `<strong>${esc(t)}</strong><br>`) // FIX: Heading support
+    .replace(/^#{1,6}\s+(.+)$/gm, (_, t) => `<strong>${esc(t)}</strong><br>`)
     .replace(/\*\*([^*]+)\*\*/g, (_, t) => `<strong>${esc(t)}</strong>`)
     .replace(/\*([^*\n]+)\*/g,   (_, t) => `<em>${esc(t)}</em>`)
     .replace(/\n/g, '<br>');
@@ -83,10 +83,17 @@ window.closeSettings = () => {
   if (window.checkAndReloadPeer) window.checkAndReloadPeer();
 };
 
-// Toggle mobile menu
 document.getElementById('mobile-menu-btn').onclick = () => {
     document.getElementById('sidebar').classList.toggle('open');
 };
+
+// FIX 13: Close sidebar on outside click (Mobile)
+document.getElementById('main').addEventListener('click', e => {
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target.id !== 'mobile-menu-btn') {
+    sidebar.classList.remove('open');
+  }
+});
 
 // ══════════════════════════════════
 // VIRTUAL FILE SYSTEM (VFS)
@@ -303,12 +310,14 @@ document.getElementById('file-upload-input').onchange = e => {
 // ══════════════════════════════════
 // DATABASE (IndexedDB)
 // ══════════════════════════════════
+// FIX 7 & 8: IDB Full Error Rejections & Blocking
 class Database {
   constructor() { this.db = null; }
 
   async init() {
     return new Promise((res, rej) => {
       const req = indexedDB.open('SouthStackDB', 8);
+      req.onblocked = () => rej(new Error('IndexedDB blocked — close other SouthStack tabs.'));
       req.onupgradeneeded = e => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('sessions'))
@@ -318,25 +327,31 @@ class Database {
             .createIndex('session_id', 'session_id');
       };
       req.onsuccess = e => { this.db = e.target.result; res(); };
-      req.onerror = e => rej(e.target.error); // FIX: Error rejection
+      req.onerror = e => rej(e.target.error);
     });
   }
 
   async add(store, data) {
-    const tx = this.db.transaction(store, 'readwrite');
-    return new Promise(res => { const r = tx.objectStore(store).add(data); r.onsuccess = () => res(r.result); });
+    return new Promise((res, rej) => { 
+      const tx = this.db.transaction(store, 'readwrite');
+      tx.onerror = e => rej(e.target.error);
+      const r = tx.objectStore(store).add(data); 
+      r.onsuccess = () => res(r.result); 
+    });
   }
 
   async getSessions() {
-    const tx = this.db.transaction('sessions', 'readonly');
-    return new Promise(res => {
+    return new Promise((res, rej) => {
+      const tx = this.db.transaction('sessions', 'readonly');
+      tx.onerror = e => rej(e.target.error);
       tx.objectStore('sessions').getAll().onsuccess = e => res(e.target.result.reverse());
     });
   }
 
   async getMessages(sid) {
-    const tx = this.db.transaction('messages', 'readonly');
-    return new Promise(res => {
+    return new Promise((res, rej) => {
+      const tx = this.db.transaction('messages', 'readonly');
+      tx.onerror = e => rej(e.target.error);
       tx.objectStore('messages').index('session_id').getAll(sid).onsuccess = e => res(e.target.result);
     });
   }
@@ -344,17 +359,18 @@ class Database {
   async updateSessionTitle(id, title) {
     return new Promise((res, rej) => {
       const tx = this.db.transaction('sessions', 'readwrite');
+      tx.onerror = e => rej(e.target.error);
       const store = tx.objectStore('sessions');
       const req = store.get(id);
       req.onsuccess = () => { if (req.result) { req.result.title = title; store.put(req.result); } res(); };
-      req.onerror = () => rej();
+      req.onerror = e => rej(e.target.error);
     });
   }
 
   async deleteSession(id) {
-    return new Promise(res => {
+    return new Promise((res, rej) => {
       const tx = this.db.transaction(['sessions', 'messages'], 'readwrite');
-      tx.onerror = () => console.warn('deleteSession failed'); // FIX: Error logging
+      tx.onerror = e => rej(e.target.error);
       tx.objectStore('sessions').delete(id);
       const msgStore = tx.objectStore('messages');
       const req = msgStore.index('session_id').getAll(id);
@@ -462,7 +478,13 @@ class GroqAdapter {
 // ══════════════════════════════════
 async function boot() {
   const db = new Database();
-  await db.init();
+  // FIX 1: Catch DB Init Failures
+  try {
+    await db.init();
+  } catch (err) {
+    document.body.innerHTML = `<div style="color:var(--danger);padding:20px;font-family:monospace;background:var(--bg);height:100vh;">⚠ SouthStack Database Failed: ${esc(err.message)}<br>Please try clearing your browser cache or opening in a normal window.</div>`;
+    return;
+  }
 
   const cfg = JSON.parse(localStorage.getItem('ss_cfg') || '{}');
   const adapters = {
@@ -504,6 +526,10 @@ async function boot() {
       ? { host: freshCfg.local_ip, port: 9000, path: '/myapp', secure: false }
       : {};
     termWrite(`<span style="color:var(--muted)">[Network] Starting ${isOffline ? 'Offline (Local Hotspot)' : 'Cloud'} P2P...</span>\n`);
+    
+    document.getElementById('my-peer-id').textContent = 'Connecting...';
+    myPeerId = null;
+
     try {
       peer = new Peer(peerOptions);
       peer.on('open', id => {
@@ -518,10 +544,16 @@ async function boot() {
       });
       peer.on('connection', c => handleConn(c));
       peer.on('error', e => {
+        myPeerId = null;
+        document.getElementById('my-peer-id').textContent = 'Error!';
         setP2PStatus('P2P Error', 'error');
-        termWrite(`<span style="color:var(--danger)">⚠ P2P Error: ${esc(e.type)}. ${isOffline ? 'Run: npx peerjs --port 9000 --path /myapp' : ''}</span>\n`);
+        termWrite(`<span style="color:var(--danger)">⚠ P2P Error: ${esc(e.type)}. ${isOffline ? 'Run: npx peer --port 9000 --path /myapp' : ''}</span>\n`);
       });
-    } catch { setP2PStatus('P2P Failed', 'error'); }
+    } catch { 
+        myPeerId = null;
+        document.getElementById('my-peer-id').textContent = 'Failed';
+        setP2PStatus('P2P Failed', 'error'); 
+    }
   };
 
   window.checkAndReloadPeer = () => {
@@ -531,7 +563,7 @@ async function boot() {
   };
 
   const handleConn = c => {
-    if (conns.some(x => x.peer === c.peer)) { c.close(); return; } // FIX: Deduplication
+    if (conns.some(x => x.peer === c.peer)) { c.close(); return; }
     conns.push(c);
     const pNick = c.metadata?.nickname || c.peer.slice(0, 5);
     termWrite(`<span style="color:var(--success)">⚡ <strong>${esc(pNick)}</strong> joined the swarm.</span>\n`);
@@ -539,6 +571,8 @@ async function boot() {
 
     c.on('data', async d => {
       if (d.type === 'live_edit') {
+        // FIX 15: P2P Filename validation
+        if (typeof d.file !== 'string' || d.file.length > 260 || typeof d.content !== 'string') return;
         vfs[d.file] = d.content;
         if (activeFile === d.file && window.monacoEditor) {
           isApplyingRemote = true;
@@ -558,7 +592,7 @@ async function boot() {
           `This will replace your current files.\n\nAccept?`
         );
         if (!ok) return;
-        vfs = Object.assign(Object.create(null), d.vfs); // FIX: Prototype pollution
+        vfs = Object.assign(Object.create(null), d.vfs);
         if (!vfs[activeFile]) activeFile = Object.keys(vfs)[0];
         renderFileList();
         saveVFS();
@@ -573,7 +607,7 @@ async function boot() {
           curSid = await db.add('sessions', { title: 'Swarm Session', model: 'Peer' });
           await loadSessionsUI();
         }
-        renderMsg(d.role === 'ai' ? 'ai' : 'peer', d.content, d.model); // FIX: AI Role confusion
+        renderMsg(d.role === 'ai' ? 'ai' : 'peer', d.content, d.model);
         await db.add('messages', { session_id: curSid, role: d.role === 'ai' ? 'ai' : 'peer', content: d.content });
       }
     });
@@ -603,7 +637,7 @@ async function boot() {
     if (!document.getElementById(styleId)) {
       const s = document.createElement('style');
       s.id = styleId;
-      const safeNick = nick.replace(/["\\]/g, '\\$&').replace(/\n/g, ' '); // FIX: Safe escaping in CSS
+      const safeNick = nick.replace(/["\\]/g, '\\$&').replace(/\n/g, ' ');
       s.innerHTML =
         `.${cursorCls}{border-left:2px solid ${safeColor}!important;margin-left:-1px;}` +
         `.${labelCls}::before{content:"${safeNick}";` +
@@ -623,7 +657,7 @@ async function boot() {
       language: getLanguageFromExtension(activeFile),
       theme: 'vs-dark',
       automaticLayout: true,
-      fontSize: 14,
+      fontSize: parseInt(localStorage.getItem('ss_fontsize') || '14'),
       fontFamily: "'JetBrains Mono', monospace",
       minimap: { enabled: false },
       scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
@@ -632,12 +666,26 @@ async function boot() {
       padding: { top: 12 }
     });
 
+    window.monacoEditor.addAction({
+      id: 'ai-explain',
+      label: '✨ Explain with AI Agent',
+      contextMenuGroupId: 'navigation',
+      run: function(ed) {
+        const text = ed.getModel().getValueInRange(ed.getSelection());
+        if (text.trim() && !isGenerating && activeModelEngine) {
+          document.getElementById('user-input').value = `Please explain this specific block of code:\n\`\`\`\n${text}\n\`\`\``;
+          document.getElementById('send-btn').click();
+        } else if (!activeModelEngine) {
+          alert('Please select an AI Agent from the dropdown first.');
+        }
+      }
+    });
+
     let cursorThrottle;
     window.monacoEditor.onDidChangeCursorPosition(e => {
-      updateSaveIndicator(true); 
       if (myPeerId && conns.length > 0) {
         clearTimeout(cursorThrottle);
-        cursorThrottle = setTimeout(() => { // FIX: Throttling cursor broadcast
+        cursorThrottle = setTimeout(() => {
           const colors = ['#ff5f56', '#ffbd2e', '#27c93f', '#7c6af7', '#00d4aa'];
           const myColor = colors[Math.abs(myPeerId.hashCode()) % colors.length];
           broadcast('cursor_move', { from: myPeerId, nick: myNickname, pos: e.position, color: myColor });
@@ -645,12 +693,15 @@ async function boot() {
       }
     });
 
+    // FIX 4: Throttle live_edit broadcasts
+    let liveEditThrottle;
     window.monacoEditor.onDidChangeModelContent(() => {
       if (!isApplyingRemote) {
         vfs[activeFile] = window.monacoEditor.getValue();
         localStorage.setItem('ss_vfs', JSON.stringify(vfs));
         updateSaveIndicator(true); 
-        broadcast('live_edit', { file: activeFile, content: vfs[activeFile] });
+        clearTimeout(liveEditThrottle);
+        liveEditThrottle = setTimeout(() => broadcast('live_edit', { file: activeFile, content: vfs[activeFile] }), 100);
       }
     });
 
@@ -701,6 +752,7 @@ async function boot() {
   function speak(t) {
     if (!aiVoiceEnabled) return;
     window.speechSynthesis.cancel();
+    // FIX 9: Protect snake_case pronunciation correctly
     const clean = t
       .replace(/```[\s\S]*?```/g, 'Code provided.')
       .replace(/`[^`]+`/g, 'code')
@@ -708,7 +760,7 @@ async function boot() {
       .replace(/\*([^*]+)\*/g, '$1')
       .replace(/#+\s/g, '')
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/[_]/g, ' ') // FIX: Protect snake_case pronunciation
+      .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1') 
       .replace(/[~>]/g, '');
     const u = new SpeechSynthesisUtterance(clean);
     u.lang = 'en-US';
@@ -722,7 +774,7 @@ async function boot() {
     const rec = new SpeechRec();
     rec.continuous = false;
     rec.interimResults = false;
-    let isRecording = false; // FIX: Prevent Double-start
+    let isRecording = false;
     rec.onstart = () => {
       isRecording = true;
       micBtn.style.color = 'var(--danger)';
@@ -736,6 +788,12 @@ async function boot() {
       micBtn.style.transform = 'scale(1)';
       document.getElementById('user-input').placeholder = `Ask ${activeModelName || 'AI'}... (Enter to send)`;
       if (document.getElementById('user-input').value.trim()) document.getElementById('send-btn').click();
+    };
+    // FIX 10: Reset UI on Speech error
+    rec.onerror = () => {
+      isRecording = false;
+      micBtn.style.color = 'var(--muted)';
+      micBtn.style.transform = 'scale(1)';
     };
     micBtn.onclick = () => {
       if (!activeModelEngine || isRecording) return;
@@ -760,9 +818,9 @@ async function boot() {
     _pyPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = './pyodide/pyodide.js';
-      script.onload = async () => {
+      const loadPyodideInstance = async (indexURL) => {
         try {
-          pyodide = await window.loadPyodide({ indexURL: './pyodide/' });
+          pyodide = await window.loadPyodide({ indexURL });
           pyodide.setStdin({
             stdin: () => {
               const val = window.prompt('Python input():');
@@ -776,10 +834,20 @@ async function boot() {
           reject(err);
         }
       };
+      script.onload = () => loadPyodideInstance('./pyodide/');
+      
       script.onerror = () => {
-        document.getElementById('pyodide-status').textContent = 'Pyodide folder not found!';
-        reject(new Error('Failed to load pyodide.js'));
+        console.warn('Local Pyodide not found, falling back to CDN...');
+        const cdnScript = document.createElement('script');
+        cdnScript.src = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js';
+        cdnScript.onload = () => loadPyodideInstance('https://cdn.jsdelivr.net/pyodide/v0.24.1/full/');
+        cdnScript.onerror = () => {
+          document.getElementById('pyodide-status').textContent = 'Error loading Python!';
+          reject(new Error('Failed to load pyodide from CDN'));
+        };
+        document.head.appendChild(cdnScript);
       };
+      
       document.head.appendChild(script);
     });
     return _pyPromise;
@@ -790,7 +858,7 @@ async function boot() {
     if (!window.monacoEditor) return;
     const code = window.monacoEditor.getValue();
     const lang = getLanguageFromExtension(activeFile);
-    const hdr = `\n<span style="color:#7c6af7">$ running ${esc(activeFile)}...</span>\n`; // FIX: ActiveFile Escape
+    const hdr = `\n<span style="color:#7c6af7">$ running ${esc(activeFile)}...</span>\n`;
     termWrite(hdr);
     broadcast('term', { html: hdr });
 
@@ -804,7 +872,6 @@ async function boot() {
     }
 
     if (lang === 'javascript') {
-      // FIX: Secure JS execution via Web Worker Blob Sandbox
       const workerCode = `
         const _l = console.log; const _e = console.error;
         console.log = (...a) => postMessage({t: 'log', d: a.map(String).join(' ')});
@@ -812,41 +879,78 @@ async function boot() {
         try { ${code} } catch(e) { postMessage({t: 'err', d: e.message}); }
       `;
       const blob = new Blob([workerCode], {type: 'application/javascript'});
-      const worker = new Worker(URL.createObjectURL(blob));
+      // FIX 2: Web Worker URL Revocation & error handler
+      const blobUrl = URL.createObjectURL(blob);
+      const worker = new Worker(blobUrl);
+      
+      worker.onerror = e => { 
+        termWrite(`<span style="color:var(--danger)">Worker Error: ${esc(e.message)}</span>\n`); 
+        worker.terminate(); 
+        URL.revokeObjectURL(blobUrl); 
+      };
+      worker.onmessageerror = () => { URL.revokeObjectURL(blobUrl); };
+      
+      const t_worker = setTimeout(() => { 
+        worker.terminate(); 
+        URL.revokeObjectURL(blobUrl); 
+        termWrite(`<span style="color:var(--warn)">Execution timed out.</span>\n`); 
+      }, 10000);
+      
       worker.onmessage = e => {
         const isErr = e.data.t === 'err';
         const h = `<span style="color:var(--${isErr ? 'danger' : 'text'})">${esc(e.data.d)}</span>\n`;
         termWrite(h); broadcast('term', { html: h });
+        if (isErr) { clearTimeout(t_worker); worker.terminate(); URL.revokeObjectURL(blobUrl); }
       };
-      setTimeout(() => worker.terminate(), 10000);
       return;
     }
 
     if (lang === 'html') {
-      // FIX: HTML rendering without Piston failure
       const blob = new Blob([code], {type: 'text/html'});
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
+      // FIX 3: HTML Blob memory leak
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
       const h = `<span style="color:var(--success)">✓ HTML preview opened in a new tab.</span>\n`;
       termWrite(h); broadcast('term', { html: h });
       return;
     }
 
+    // FIX 5: Validate Piston supported language before sending
     // C / C++ / Java / others via Piston API
     try {
       const langMap = { c: 'c', cpp: 'c++', java: 'java', rs: 'rust', go: 'go', rb: 'ruby', php: 'php' };
+      const pistonLang = langMap[lang];
+      if (!pistonLang) {
+        termWrite(`<span style="color:var(--warn)">⚠ No runner for "${esc(lang)}" files. Supported: C, C++, Java, Rust, Go, Ruby, PHP.</span>\n`);
+        return;
+      }
+
       const currentCfg = JSON.parse(localStorage.getItem('ss_cfg') || '{}');
       const apiUrl = currentCfg.piston_url || 'https://emkc.org/api/v2/piston/execute';
       termWrite(`<span style="color:var(--muted)">[Compiler] Routing to ${currentCfg.piston_url ? 'Local Piston' : 'Cloud Piston'}...</span>\n`);
+
+      // FIX: Cloud Piston requires exact versions instead of '*'
+      const versionMap = { 'c': '10.2.0', 'c++': '10.2.0', 'java': '15.0.2', 'rust': '1.68.2', 'go': '1.16.2', 'ruby': '3.0.1', 'php': '8.2.3' };
+      const version = currentCfg.piston_url ? '*' : (versionMap[pistonLang] || '*');
+
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: langMap[lang] || lang, version: '*', files: [{ content: code }] })
+        body: JSON.stringify({ language: pistonLang, version: version, files: [{ content: code }] })
       });
       const d = await res.json();
+
+      // FIX: Catch API level errors (like rate limits or missing versions)
+      if (d.message) {
+        const h = `<span style="color:var(--danger)">API Error: ${esc(d.message)}</span>\n`;
+        termWrite(h); broadcast('term', { html: h });
+        return;
+      }
+
       if (d.run?.stdout) { const h = `<span style="color:var(--text)">${esc(d.run.stdout)}</span>\n`; termWrite(h); broadcast('term', { html: h }); }
       if (d.run?.stderr) { const h = `<span style="color:var(--danger)">${esc(d.run.stderr)}</span>\n`; termWrite(h); broadcast('term', { html: h }); }
-      if (d.compile?.stderr) { const h = `<span style="color:var(--danger)">${esc(d.compile.stderr)}</span>\n`; termWrite(h); broadcast('term', { html: h }); }
+      if (d.compile?.stderr) { const h = `<span style="color:var(--danger)">Compile Error:\n${esc(d.compile.stderr)}</span>\n`; termWrite(h); broadcast('term', { html: h }); }
     } catch {
       termWrite(`<span style="color:var(--danger)">Execution Error: Could not reach compiler API.</span>\n`);
     }
@@ -1021,7 +1125,13 @@ async function boot() {
     return wrapper;
   }
 
-  document.getElementById('model-select').onchange = async e => {
+  const modelSelect = document.getElementById('model-select');
+  // FIX 6: modelSelect Revert Tracker
+  let lastModelValue = '';
+
+  modelSelect.onchange = async e => {
+    if (isGenerating) { e.target.value = lastModelValue; return; }
+    lastModelValue    = e.target.value;
     activeModelName   = e.target.options[e.target.selectedIndex].text;
     const val         = e.target.value;
     activeModelEngine = val.includes('MLC') ? 'webllm'
@@ -1051,6 +1161,7 @@ async function boot() {
       document.getElementById('status-label').textContent = err.message;
       document.getElementById('status-dot').className  = 'status-dot error';
       document.getElementById('webllm-progress').classList.remove('show');
+      document.querySelectorAll('#user-input, #send-btn, #mic-btn').forEach(el => el.disabled = false);
     }
   };
 
@@ -1061,16 +1172,25 @@ async function boot() {
     isGenerating = true;
     input.value  = '';
     window.speechSynthesis?.cancel();
+    modelSelect.disabled = true;
 
     saveVFS();
     const eCtx = `\n\n[Editor — ${activeFile}]:\n\`\`\`\n${vfs[activeFile]}\n\`\`\``;
 
+    let isNewSession = false;
     if (!curSid) {
       curSid = await db.add('sessions', { title: val.slice(0, 30), model: activeModelName });
+      isNewSession = true;
       await loadSessionsUI();
     }
 
     const histRaw = await db.getMessages(curSid);
+    // FIX 14: Check history directly for title update instead of repeating DB call later
+    if (histRaw.length === 0 && !isNewSession) {
+      await db.updateSessionTitle(curSid, val.slice(0, 30));
+      await loadSessionsUI();
+    }
+
     const history = histRaw.slice(-10).map(m => ({
       role: (m.role === 'user' || m.role === 'peer') ? 'user' : 'assistant',
       content: m.content
@@ -1109,6 +1229,7 @@ async function boot() {
     contentEl.classList.remove('cursor-blink');
     msgDiv.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
     isGenerating = false;
+    modelSelect.disabled = false;
   };
 
   document.getElementById('user-input').addEventListener('keydown', e => {
@@ -1122,8 +1243,11 @@ async function boot() {
   document.getElementById('local-ip').value     = savedCfg.local_ip     || '';
   document.getElementById('piston-url').value   = savedCfg.piston_url   || '';
 
-  document.getElementById('my-peer-id').onclick = function () {
-    if (!myPeerId) return;
+ document.getElementById('my-peer-id').onclick = function () {
+    if (!myPeerId) { 
+      alert('Node ID is not generated yet! P2P Network could not connect.'); 
+      return; 
+    }
     navigator.clipboard.writeText(myPeerId).then(() => {
       const old = this.textContent; this.textContent = '✓ Copied!';
       setTimeout(() => this.textContent = old, 1500);
@@ -1131,7 +1255,10 @@ async function boot() {
   };
 
   document.getElementById('copy-link-btn').onclick = function () {
-    if (!myPeerId) return;
+    if (!myPeerId) { 
+      alert('Node ID is not generated yet! Cannot copy link.'); 
+      return; 
+    }
     const link = `${location.origin}${location.pathname}?join=${myPeerId}`;
     navigator.clipboard.writeText(link).then(() => {
       const old = this.innerHTML;
@@ -1171,6 +1298,37 @@ async function boot() {
     c.on('open', () => { handleConn(c); document.getElementById('target-peer-id').value = ''; });
     c.on('error', () => setP2PStatus('Connection failed', 'error'));
   };
+
+  // ── Offline badge ──
+  function updateOnlineStatus() {
+    const badge = document.getElementById('offline-badge');
+    if (!badge) return;
+    badge.style.display = navigator.onLine ? 'none' : 'inline-block';
+  }
+  window.addEventListener('online',  updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+
+  // ── Font size from settings ──
+  const savedFontSize = parseInt(localStorage.getItem('ss_fontsize') || '14');
+  if (window.monacoEditor) window.monacoEditor.updateOptions({ fontSize: savedFontSize });
+  const fontInput = document.getElementById('font-size-input');
+  if (fontInput) {
+    fontInput.value = savedFontSize;
+    fontInput.oninput = () => {
+      const sz = Math.max(10, Math.min(24, parseInt(fontInput.value) || 14));
+      if (window.monacoEditor) window.monacoEditor.updateOptions({ fontSize: sz });
+      localStorage.setItem('ss_fontsize', sz);
+    };
+  }
+
+  // FIX 11: Store interval
+  const _hintInterval = setInterval(() => {
+    const h = document.getElementById('input-hint');
+    if (!h) return;
+    h.textContent = (window.monacoEditor?.getValue().trim() && activeModelEngine)
+      ? '📎 Editor code will be attached' : '';
+  }, 1000);
 
   setupPeer();
   renderFileList();

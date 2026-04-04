@@ -707,6 +707,7 @@ html, body {
    RESPONSIVE — Mobile / Tablet (FIX [10])
    ══════════════════════════════════════ */
 @media (max-width: 1000px) {
+  .tb-tag { display: none; }
   #mobile-menu-btn { display: inline-block !important; }
 
   #main { flex-direction: column; overflow-y: auto; }
