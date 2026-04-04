@@ -1,55 +1,78 @@
-# SouthStack IDE — Professional Overview
 
-SouthStack is a modern, browser-based decentralized code editor offering a full development environment within a single web page. It integrates real-time P2P collaboration with sophisticated offline and cloud-based AI capabilities to provide a seamless coding experience without a central server.
+# 🚀 SouthStack IDE
 
-## Core Features
+> **A Decentralized, Offline-First, Agentic Browser IDE for the Modern Developer.**
 
-### Swarm Network (P2P Collaboration)
-* **Real-time Live Editing**: Enables collaborative coding without a central server using the PeerJS framework.
-* **Remote Cursors**: Tracks collaborators in real-time with unique colors and identifying labels to ensure smooth team workflows.
-* **Project Synchronization**: Synchronizes the entire Virtual File System (VFS) across peers instantly with a single action.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build: Production](https://img.shields.io/badge/Build-Production-green.svg)](#)
+[![Stack: Vanilla JS](https://img.shields.io/badge/Stack-Vanilla%20JS-F7DF1E.svg)](#)
+[![P2P: PeerJS](https://img.shields.io/badge/P2P-PeerJS-7c6af7.svg)](#)
 
-### Intelligent AI Agents
-* **Offline AI (WebGPU)**: Executes Qwen and Llama models locally within the browser using WebLLM technology for private, internet-free assistance.
-* **Hybrid AI Support**: Leverages Google Gemini 1.5 and Groq APIs for high-performance cloud-based reasoning when internet access is available.
-* **Ghost Text**: Provides context-aware code completion and predictive line generation similar to industry-standard copilot tools.
-* **Integrated Code Insertion**: Allows users to directly insert AI-generated snippets into the editor at the current cursor position.
-
-### Hybrid Execution Engine
-* **Offline Python Support**: Utilizes Pyodide for browser-based Python execution, including support for standard input/output.
-* **Multi-Language Compilation**: Facilitates compilation for C, C++, Java, Rust, and Go through the Piston API.
-* **HTML Live Preview**: Includes an integrated rendering mode to preview HTML code directly in a new browser tab.
-
-### Virtual File System (VFS)
-* **Persistent Storage**: Maintains file integrity and chat session history across browser reloads using IndexedDB and LocalStorage.
-* **Import and Export**: Supports importing local files into the VFS and downloading entire projects as organized ZIP archives.
-
-### Voice AI Capabilities
-* **Voice-to-Text Input**: Enables hands-free prompt engineering and command input through speech recognition.
-* **Auditory AI Responses**: Provides text-to-speech functionality for AI replies, allowing users to listen to explanations and code descriptions.
-
-## Security Architecture
-* **Isolated JavaScript Execution**: Employs a Web Worker Blob Sandbox to run user scripts in a separate thread, protecting the main application context, API keys, and local data.
-* **XSS Mitigation**: Implements strict data escaping for all terminal outputs and chat interface components.
-* **Prototype Pollution Guard**: Secures the project synchronization process to prevent malicious object property injection from connected peers.
-
-## Technical Specifications
-* **Editor Core**: Powered by the Monaco Editor engine (VS Code).
-* **P2P Framework**: PeerJS for decentralized signaling and data transfer.
-* **AI Integration**: WebLLM (WebGPU), Gemini API, and Groq API.
-* **Logic Stack**: Pure Vanilla JavaScript with a modular architecture.
-* **Design System**: CSS3 styling utilizing Syne and JetBrains Mono typography.
-
-## Project Setup and Usage
-1. Clone the repository to your local directory.
-2. Open index.html in a web browser using a local server environment.
-3. For local P2P signaling in offline environments, execute the following command: `npx peerjs --port 9000 --path /myapp`.
-4. Add personal API keys for Google Gemini or Groq within the IDE settings panel to enable cloud features.
-
-## Team Credits
-* **Sayeed Mortuza**: 
-* **Md Farhan**: 
-* **Lamiya**: 
+**SouthStack** is a high-performance, serverless IDE that runs entirely in your browser. It bridges the gap between local development and real-time collaboration by utilizing **P2P Swarm Networks**, **WebGPU-accelerated AI**, and **Local Microservices**.
 
 ---
-Copyright 2026 SouthStack IDE — Developed for the CSE 327 Project.
+
+## ✨ Key Features
+
+### 🌐 Decentralized Collaboration (P2P Swarm)
+* **Zero-Server Collaboration**: Real-time multi-user editing via PeerJS and WebRTC.
+* **Presence Tracking**: Live remote cursors with unique name tags and color-coding.
+* **Swarm Sync**: One-click VFS (Virtual File System) synchronization across all connected peers.
+
+### 🤖 Intelligent Agentic Assistant
+* **Offline-First AI**: Run LLMs (Qwen/Llama) locally using **WebLLM** (WebGPU) — 100% private and internet-free.
+* **Cloud Hybrid**: Support for Google Gemini 1.5 & Groq APIs for high-tier reasoning when online.
+* **Ghost Text**: Context-aware code completions and predictive line generation similar to industry-standard Copilots.
+* **Voice Interactivity**: Integrated Speech-to-Text for hands-free prompting and Text-to-Speech for AI responses.
+
+### ⚙️ Hybrid Execution Engine
+* **Offline Python**: Native Python execution in the browser via **Pyodide** (WebAssembly).
+* **Local Compiler Microservice**: A custom Node.js bridge to execute **C, C++, and Java** using your local hardware, bypassing cloud API restrictions.
+* **Live Web Preview**: Sandboxed HTML/CSS/JS rendering in real-time within a new browser tab.
+
+---
+
+## 🛡️ Security Architecture
+* **Web Worker Sandbox**: Executes JavaScript logic in an isolated thread to protect the main application state.
+* **XSS Sanitization**: Strict data escaping across the terminal, chat, and markdown rendering layers.
+* **Prototype Protection**: Guards the synchronization layer against malicious object property injections.
+
+---
+
+## 🛠️ Technical Specifications
+* **Editor Core**: Monaco Editor (The engine behind VS Code).
+* **P2P Architecture**: PeerJS for decentralized signaling and WebRTC.
+* **AI Stack**: WebLLM (WebGPU), Gemini API, Groq API.
+* **Runtime Stack**: Vanilla JavaScript (ES6+), Node.js, Pyodide (Wasm).
+
+---
+
+## 🚀 Installation & Setup
+
+### 1. Prerequisites
+Ensure you have **Node.js** installed on your machine.
+
+### 2. Run the P2P Signaling Server (Offline/Local)
+To enable real-time collaboration in a local network or hotspot:
+```bash
+npm install -g peer
+peerjs --port 9000 --path /myapp
+```
+
+### 3. Run the Local Compiler (For C/C++/Java)
+To execute code locally without internet, run our custom microservice:
+```bash
+node compiler.js
+```
+*Note: In IDE Settings (⚙), set the Offline Compiler URL to: `http://localhost:2000/api/v2/piston/execute`*
+
+---
+
+## 👥 Project Team
+* **Sayeed Mortuza** - *Lead Software Architect & System Designer* | [sayeedmortuza50@gmail.com](mailto:sayeedmortuza50@gmail.com)
+* **Md Farhan** - *Lead UI/UX Engineer & Quality Analyst*
+* **Lamiya** - *Documentation Specialist & Frontend Developer*
+
+---
+**North South University (NSU)** **Developed for the CSE 327 Software Engineering Project** Copyright © 2026 SouthStack IDE
+```
